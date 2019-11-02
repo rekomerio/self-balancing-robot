@@ -1,2 +1,2 @@
-# self-balancing-robot
-Self balancing robot | Arduino | MPU6050 |  DRV8825 | Nema 17 stepper motor
+# Self balancing robot
+[PID controller for this project](https://github.com/rekomerio/simple-pid)
