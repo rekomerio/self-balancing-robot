@@ -57,6 +57,9 @@
 #define SET_RED_LED_ON     PORTB |=  (1 << 1)
 #define SET_RED_LED_OFF    PORTB &= ~(1 << 1)
 
+#define LEFT_BTN_IS_PRESSED  !((PINB >> 3) & 1)
+#define RIGHT_BTN_IS_PRESSED !((PINB >> 4) & 1)
+
 #define pulseTime(S) (abs(MAX_SPEED / S))
 
 template <class T>
@@ -65,8 +68,8 @@ struct axis {
 };
 
 /* P,   I,   D,   min,  max */
-PID anglePID(22.0, 0.5, 30.0, -MAX_SPEED, MAX_SPEED);    // Controls the motors to achieve desired angle
-PID speedPID(0.02, 0.0, 0.00425, -MAX_ANGLE, MAX_ANGLE); // Adjusts the angle, so that speed is minimal
+PID anglePID(19.0, 0.5, 30.0, -MAX_SPEED, MAX_SPEED);    // Controls the motors to achieve desired angle
+PID speedPID(0.0165, 0.0, 0.00425, -MAX_ANGLE, MAX_ANGLE); // Adjusts the angle, so that speed is minimal
 
 struct axis<int16_t> gyro;
 struct axis<int16_t> acc;
@@ -159,7 +162,9 @@ void loop() {
     }
   }
 #if DEBUG
-  readButtons();
+  adjustPid();
+#else
+  setBraking();
 #endif
 }
 
@@ -236,50 +241,64 @@ void blinkLed(uint8_t blinks, uint8_t pin) {
   }
 }
 
-void readButtons() {
+void setBraking() {
+  if (LEFT_BTN_IS_PRESSED) {         // Slow braking
+    anglePID.setPID(19.0, 0.5, 30.0);
+    speedPID.setPID(0.0165, 0.0, 0.00425);
+    SET_RED_LED_ON;
+  } else if (RIGHT_BTN_IS_PRESSED) { // Fast braking
+    anglePID.setPID(15.0, 0.5, 25.0);
+    speedPID.setPID(0.0265, 0.0, 0.0095);
+    SET_RED_LED_ON;
+  } else {
+    SET_RED_LED_OFF;
+  }
+}
+
+void adjustPid() {
 #if SPEED_P_ADJ
   if (counter++ % 50 == 0) {
-    if (!digitalRead(11)) speedPID.setP(speedPID.getP() - 0.00025);
-    if (!digitalRead(12)) speedPID.setP(speedPID.getP() + 0.00025);
+    if (LEFT_BTN_IS_PRESSED) speedPID.setP(speedPID.getP() - 0.00025);
+    if (RIGHT_BTN_IS_PRESSED) speedPID.setP(speedPID.getP() + 0.00025);
     Serial.println(speedPID.getP(), 10);
   }
 #endif
 #if SPEED_I_ADJ
   if (counter++ % 50 == 0) {
-    if (!digitalRead(11)) speedPID.setI(speedPID.getI() - 0.00001);
-    if (!digitalRead(12)) speedPID.setI(speedPID.getI() + 0.00001);
+    if (LEFT_BTN_IS_PRESSED) speedPID.setI(speedPID.getI() - 0.00001);
+    if (RIGHT_BTN_IS_PRESSED) speedPID.setI(speedPID.getI() + 0.00001);
     Serial.println(speedPID.getI(), 10);
   }
 #endif
 
 #if SPEED_D_ADJ
   if (counter++ % 50 == 0) {
-    if (!digitalRead(11)) speedPID.setD(speedPID.getD() - 0.0005);
-    if (!digitalRead(12)) speedPID.setD(speedPID.getD() + 0.0005);
+    if (LEFT_BTN_IS_PRESSED) speedPID.setD(speedPID.getD() - 0.0005);
+    if (RIGHT_BTN_IS_PRESSED) speedPID.setD(speedPID.getD() + 0.0005);
     Serial.println(speedPID.getD(), 10);
   }
 #endif
 
 #if ANGLE_P_ADJ
   if (counter++ % 50 == 0) {
-    if (!digitalRead(11)) anglePID.setP(anglePID.getP() - 1);
-    if (!digitalRead(12)) anglePID.setP(anglePID.getP() + 1);
+    if (LEFT_BTN_IS_PRESSED) anglePID.setP(anglePID.getP() - 1);
+    if (RIGHT_BTN_IS_PRESSED) anglePID.setP(anglePID.getP() + 1);
     Serial.println(anglePID.getP());
   }
 #endif
 
 #if ANGLE_I_ADJ
   if (counter++ % 50 == 0) {
-    if (!digitalRead(11)) anglePID.setI(anglePID.getI() - 0.05);
-    if (!digitalRead(12)) anglePID.setI(anglePID.getI() + 0.05);
+    if (LEFT_BTN_IS_PRESSED) anglePID.setI(anglePID.getI() - 0.05);
+    if (RIGHT_BTN_IS_PRESSED) anglePID.setI(anglePID.getI() + 0.05);
     Serial.println(anglePID.getI());
   }
 #endif
 
 #if ANGLE_D_ADJ
   if (counter++ % 50 == 0) {
-    if (!digitalRead(11)) anglePID.setD(anglePID.getD() - 1);
-    if (!digitalRead(12)) anglePID.setD(anglePID.getD() + 1);
+    if (LEFT_BTN_IS_PRESSED) anglePID.setD(anglePID.getD() - 1);
+    if (RIGHT_BTN_IS_PRESSED) anglePID.setD(anglePID.getD() + 1);
     Serial.println(anglePID.getD());
   }
 #endif
