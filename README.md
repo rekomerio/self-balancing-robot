@@ -14,7 +14,7 @@
 - 2x Tires
 - 1x Frame
 
-**Optional**
+**Optional:**
 - 1x RGB LED
 - 2x 220 ohm resistor for the LED
 - 2x Buttons for PID adjustment / mode changing / whatever
