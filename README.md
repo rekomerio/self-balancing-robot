@@ -2,7 +2,7 @@
 
 Robots purpose is to simply try to keep itself up. When pushed, it will also slow down the gained speed.  
 
-[PID controller for this project](https://github.com/rekomerio/simple-pid)
+### [PID controller for this project can be found here](https://github.com/rekomerio/simple-pid)
 
 ### Parts
 
