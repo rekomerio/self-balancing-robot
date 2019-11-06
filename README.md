@@ -1,4 +1,7 @@
 # Self balancing robot
+
+Robots purpose is to simply try to keep itself up. When pushed, it will also slow down the gained speed.  
+
 [PID controller for this project](https://github.com/rekomerio/simple-pid)
 
 ### Parts
@@ -11,6 +14,7 @@
 - 1x MPU6050 Gyroscope / accelerometer
 - 1x Stepdown voltage regulator
 - 2x 100uF 50V Capacitor for DRV8825 to eliminate IC voltage spikes
+- 1x 11.1V 2100mAh Li-Po battery
 - 2x Tires
 - 1x Frame
 
@@ -18,6 +22,17 @@
 - 1x RGB LED
 - 2x 220 ohm resistor for the LED
 - 2x Buttons for PID adjustment / mode changing / whatever
+
+### Pins
+
+- D2 to left motor pulse
+- D3 to left motor direction
+- D4 to right motor pulse
+- D5 to right motor direction
+- D8 to RGB LED green pin
+- D9 to RGB LED red pin
+- D11 to button 1
+- D12 to button 2
 
 ### Click image for video
 
