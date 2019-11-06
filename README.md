@@ -19,4 +19,6 @@
 - 2x 220 ohm resistor for the LED
 - 2x Buttons for PID adjustment / mode changing / whatever
 
-[![Robot](http://img.youtube.com/vi/9eCU7sBP9oE/0.jpg)](http://www.youtube.com/watch?v=9eCU7sBP9oE "Robot")
+Click image for video
+
+[![Robot](https://raw.githubusercontent.com/rekomerio/self-balancing-robot/master/img/self-balancing-robot.jpg)](http://www.youtube.com/watch?v=9eCU7sBP9oE "Robot")
