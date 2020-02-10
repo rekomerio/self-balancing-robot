@@ -67,6 +67,37 @@ struct axis {
   T x, y, z;
 };
 
+class Channel {
+  public:
+    Channel() {
+      m_uStartT = 0;
+      m_uEndT = 0;
+      m_uElapsedT = 0;
+    }
+
+    uint32_t getElapsed() {
+      uint32_t elapsed = m_uEndT - m_uStartT;
+      if (elapsed < 2200 && elapsed > 800) {
+        this->m_uElapsedT = (this->m_uElapsedT * 0.8) + (0.2 * elapsed);
+      }
+
+      return m_uElapsedT;
+    }
+
+    inline void setStartTime(uint32_t startT) {
+      m_uStartT = startT;
+    }
+
+    inline void setEndTime(uint32_t endT) {
+      m_uEndT = endT;
+    }
+
+  private:
+    uint32_t m_uStartT;
+    uint32_t m_uEndT;
+    uint32_t m_uElapsedT;
+};
+
 /* P,   I,   D,   min,  max */
 PID anglePID(19.0, 0.5, 30.0, -MAX_SPEED, MAX_SPEED);    // Controls the motors to achieve desired angle
 PID speedPID(0.0165, 0.0, 0.00425, -MAX_ANGLE, MAX_ANGLE); // Adjusts the angle, so that speed is minimal
@@ -74,6 +105,9 @@ PID speedPID(0.0165, 0.0, 0.00425, -MAX_ANGLE, MAX_ANGLE); // Adjusts the angle,
 struct axis<int16_t> gyro;
 struct axis<int16_t> acc;
 struct axis<int32_t> gyroOffset = {0, 0, 0};
+
+Channel pitch;
+Channel yaw;
 
 float angle;
 float targetAngle = 0;
@@ -92,6 +126,19 @@ void setup() {
   pinMode(GREEN_LED_PIN, OUTPUT);
   pinMode(11, INPUT_PULLUP); // Button 1
   pinMode(12, INPUT_PULLUP); // Button 2
+  pinMode(7, INPUT);  // Rx channel yaw
+  pinMode(10, INPUT); // Rx channel pitch
+  
+  // Enable interrupts for pin state changes for all digital pins
+  PCICR = (1 << PCIE0 | 1 << PCIE2);
+
+  // Enable interrupts only for D10
+  PCMSK0 = 0;
+  PCMSK0 = (1 << PCINT2);
+  // Enable interrupts only for D7
+  PCMSK2 = 0;
+  PCMSK2 = (1 << PCINT23);
+
 #if DEBUG
   Serial.begin(9600);
 #endif
@@ -125,17 +172,34 @@ void setup() {
 
 uint8_t counter = 0; // Used for debugging
 
+uint16_t rightWaitedTime = 0, rightWaitTime = 0, leftWaitedTime = 0, leftWaitTime = 0;
+
 void loop() {
   computeAngle();
 
-  if (angle > MAX_ANGLE || angle < -MAX_ANGLE) {
+  float receivedSpeed = (1500.0f - (float)pitch.getElapsed());
+  float receivedYaw = (1500.0f - (float)yaw.getElapsed());
+
+  if (receivedYaw < -20) {
+    rightWaitTime = map(-receivedYaw, 0, 490, 10, 1);
+  } else {
+    rightWaitTime = 0;
+  }
+
+  if (receivedYaw > 20) {
+    leftWaitTime = map(receivedYaw, 0, 490, 10, 1);
+  } else {
+    leftWaitTime = 0;
+  }
+
+  if (abs(angle) > MAX_ANGLE) {
     fallen = true;
     targetAngle = 0;
     anglePID.reset();
     speedPID.reset();
   }
 
-  if (angle < START_ANGLE && angle > -START_ANGLE) {
+  if (abs(angle) < START_ANGLE) {
     fallen = false;
   }
 
@@ -143,7 +207,7 @@ void loop() {
     stopTimer();
   } else {
     float vehicleSpeed = anglePID.compute(angle - targetAngle);
-    targetAngle = speedPID.compute(-vehicleSpeed);
+    targetAngle = speedPID.compute((-vehicleSpeed) - (receivedSpeed * 1.5));
 
     if (vehicleSpeed > 0) {
       PORTD &= ~(1 << LMD);                                       // Normal direction
@@ -329,13 +393,57 @@ void startTimer() {
   Pulse generation for stepper motors
 */
 #define RMP_HIGH (PIND >> RMP) & 1
+#define LMP_HIGH (PIND >> LMP) & 1
 
 ISR(TIMER1_COMPA_vect) {
-  if (RMP_HIGH) {
-    /* Set pins low */
-    PORTD &= ~((1 << LMP) | (1 << RMP));
+
+  // Drive right motor
+  if (rightWaitTime == 0 || rightWaitedTime != rightWaitTime) {
+    if (RMP_HIGH) {
+      /* Set pins low */
+      PORTD &= ~(1 << RMP);
+    } else {
+      /* Set pins high */
+      PORTD |= (1 << RMP);
+    }
+    ++rightWaitedTime %= 10;
   } else {
-    /* Set pins high */
-    PORTD |= (1 << LMP) | (1 << RMP);
+    rightWaitedTime = 0;
+  }
+
+
+  // Drive left motor
+  if (leftWaitTime == 0 || leftWaitedTime != leftWaitTime) {
+    if (LMP_HIGH) {
+      /* Set pins low */
+      PORTD &= ~(1 << LMP);
+    } else {
+      /* Set pins high */
+      PORTD |= (1 << LMP);
+    }
+    ++leftWaitedTime %= 10;
+  }
+  else {
+    leftWaitedTime = 0;
+  }
+}
+
+// Receiver channel 2, pin D10
+#define RX2_IS_HIGH (PINB >> 2) & 1
+ISR (PCINT0_vect) {
+  if (RX2_IS_HIGH) {
+    pitch.setStartTime(micros());
+  } else {
+    pitch.setEndTime(micros());
+  }
+}
+
+// Receiver channel 4, pin D7
+#define RX1_IS_HIGH (PIND >> 7) & 1
+ISR (PCINT2_vect) {
+  if (RX1_IS_HIGH) {
+    yaw.setStartTime(micros());
+  } else {
+    yaw.setEndTime(micros());
   }
 }
