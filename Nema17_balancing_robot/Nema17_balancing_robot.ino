@@ -17,6 +17,10 @@
 #define SPEED_I_ADJ        0
 #define SPEED_D_ADJ        0
 
+
+#define MAX_YAW 500
+#define MAX_PITCH 500
+
 /* GYRO */
 #define MPU                0x68
 #define REFRESH_RATE       250.0
@@ -34,7 +38,7 @@
 #define CG                 0
 #define MAX_SPEED          1000.0
 #define MIN_SPEED          1
-#define MAX_ANGLE          25
+#define MAX_ANGLE          30
 #define START_ANGLE        1
 /*
   Pins dedicated for the motors
@@ -77,7 +81,9 @@ class Channel {
 
     uint32_t getElapsed() {
       uint32_t elapsed = m_uEndT - m_uStartT;
-      if (elapsed < 2200 && elapsed > 800) {
+      // Filter out all the nonsense
+      if (elapsed < 2050 && elapsed > 950) {
+        // Increase elapsed time slowly to reduce noise
         this->m_uElapsedT = (this->m_uElapsedT * 0.8) + (0.2 * elapsed);
       }
 
@@ -114,6 +120,11 @@ float targetAngle = 0;
 
 bool fallen = true;
 
+/* Used for controlling the yaw */
+uint16_t numInterrupts = 0;
+uint16_t rightPulseToSkip = 0;
+uint16_t leftPulseToSkip = 0;
+
 void setup() {
   TCCR1A = 0;
   TCCR1B = 0;
@@ -128,14 +139,14 @@ void setup() {
   pinMode(12, INPUT_PULLUP); // Button 2
   pinMode(7, INPUT);  // Rx channel yaw
   pinMode(10, INPUT); // Rx channel pitch
-  
+
   // Enable interrupts for pin state changes for all digital pins
   PCICR = (1 << PCIE0 | 1 << PCIE2);
 
-  // Enable interrupts only for D10
+  // Enable interrupts only for D10 state changes
   PCMSK0 = 0;
   PCMSK0 = (1 << PCINT2);
-  // Enable interrupts only for D7
+  // Enable interrupts only for D7 state changes
   PCMSK2 = 0;
   PCMSK2 = (1 << PCINT23);
 
@@ -172,25 +183,8 @@ void setup() {
 
 uint8_t counter = 0; // Used for debugging
 
-uint16_t rightWaitedTime = 0, rightWaitTime = 0, leftWaitedTime = 0, leftWaitTime = 0;
-
 void loop() {
   computeAngle();
-
-  float receivedSpeed = (1500.0f - (float)pitch.getElapsed());
-  float receivedYaw = (1500.0f - (float)yaw.getElapsed());
-
-  if (receivedYaw < -20) {
-    rightWaitTime = map(-receivedYaw, 0, 490, 10, 1);
-  } else {
-    rightWaitTime = 0;
-  }
-
-  if (receivedYaw > 20) {
-    leftWaitTime = map(receivedYaw, 0, 490, 10, 1);
-  } else {
-    leftWaitTime = 0;
-  }
 
   if (abs(angle) > MAX_ANGLE) {
     fallen = true;
@@ -203,11 +197,14 @@ void loop() {
     fallen = false;
   }
 
+  setYaw();
+  int16_t receivedSpeed = constrain(int16_t(1500 - pitch.getElapsed()), -MAX_PITCH, MAX_PITCH);
+
   if (fallen) {
     stopTimer();
   } else {
     float vehicleSpeed = anglePID.compute(angle - targetAngle);
-    targetAngle = speedPID.compute((-vehicleSpeed) - (receivedSpeed * 1.5));
+    targetAngle = speedPID.compute(float(receivedSpeed * 1.5f) - vehicleSpeed);
 
     if (vehicleSpeed > 0) {
       PORTD &= ~(1 << LMD);                                       // Normal direction
@@ -299,9 +296,33 @@ void gyroCalibrate(struct axis<int32_t> &calibration) {
 void blinkLed(uint8_t blinks, uint8_t pin) {
   for (uint8_t i = 0; i < blinks; i++) {
     digitalWrite(pin, HIGH);
-    delay(65);
+    delay(50);
     digitalWrite(pin, LOW);
-    delay(65);
+    delay(50);
+  }
+}
+
+
+
+void setYaw() {
+  int16_t receivedYaw = constrain(int16_t(1500 - yaw.getElapsed()), -MAX_YAW, MAX_YAW);
+
+  if (receivedYaw < -25) {
+    leftPulseToSkip = (550 / (-receivedYaw));
+    if (leftPulseToSkip < 2) {
+      leftPulseToSkip = 2;
+    }
+  } else {
+    leftPulseToSkip = 0;
+  }
+
+  if (receivedYaw > 25) {
+    rightPulseToSkip = (550 / receivedYaw);
+    if (rightPulseToSkip < 2) {
+      rightPulseToSkip = 2;
+    }
+  } else {
+    rightPulseToSkip = 0;
   }
 }
 
@@ -390,7 +411,8 @@ void startTimer() {
   TCCR1B |= (1 << CS11) | (1 << CS10);
 }
 /*
-  Pulse generation for stepper motors
+  Pulse generation for stepper motors.
+  Yawing of the robot is done by skipping some pulses
 */
 #define RMP_HIGH (PIND >> RMP) & 1
 #define LMP_HIGH (PIND >> LMP) & 1
@@ -398,7 +420,7 @@ void startTimer() {
 ISR(TIMER1_COMPA_vect) {
 
   // Drive right motor
-  if (rightWaitTime == 0 || rightWaitedTime != rightWaitTime) {
+  if (rightPulseToSkip == 0 || numInterrupts % rightPulseToSkip != 0) {
     if (RMP_HIGH) {
       /* Set pins low */
       PORTD &= ~(1 << RMP);
@@ -406,14 +428,10 @@ ISR(TIMER1_COMPA_vect) {
       /* Set pins high */
       PORTD |= (1 << RMP);
     }
-    ++rightWaitedTime %= 10;
-  } else {
-    rightWaitedTime = 0;
   }
 
-
   // Drive left motor
-  if (leftWaitTime == 0 || leftWaitedTime != leftWaitTime) {
+  if (leftPulseToSkip == 0 || numInterrupts % leftPulseToSkip != 0) {
     if (LMP_HIGH) {
       /* Set pins low */
       PORTD &= ~(1 << LMP);
@@ -421,15 +439,16 @@ ISR(TIMER1_COMPA_vect) {
       /* Set pins high */
       PORTD |= (1 << LMP);
     }
-    ++leftWaitedTime %= 10;
   }
-  else {
-    leftWaitedTime = 0;
-  }
+
+  numInterrupts++;
 }
 
+// Receiver channel 4, pin D7
+#define RX1_IS_HIGH (PIND >> 7) & 1
 // Receiver channel 2, pin D10
 #define RX2_IS_HIGH (PINB >> 2) & 1
+
 ISR (PCINT0_vect) {
   if (RX2_IS_HIGH) {
     pitch.setStartTime(micros());
@@ -438,8 +457,6 @@ ISR (PCINT0_vect) {
   }
 }
 
-// Receiver channel 4, pin D7
-#define RX1_IS_HIGH (PIND >> 7) & 1
 ISR (PCINT2_vect) {
   if (RX1_IS_HIGH) {
     yaw.setStartTime(micros());
