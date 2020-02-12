@@ -6,6 +6,7 @@
 
 #include <Wire.h>
 #include <PID.h>
+#include "Channel.h"
 
 #define DEBUG              0
 
@@ -17,9 +18,9 @@
 #define SPEED_I_ADJ        0
 #define SPEED_D_ADJ        0
 
-
-#define MAX_YAW 500
-#define MAX_PITCH 500
+/* Controller stick range */
+#define MAX_YAW            500
+#define MAX_PITCH          500
 
 /* GYRO */
 #define MPU                0x68
@@ -69,39 +70,6 @@
 template <class T>
 struct axis {
   T x, y, z;
-};
-
-class Channel {
-  public:
-    Channel() {
-      m_uStartT = 0;
-      m_uEndT = 0;
-      m_uElapsedT = 0;
-    }
-
-    uint32_t getElapsed() {
-      uint32_t elapsed = m_uEndT - m_uStartT;
-      // Filter out all the nonsense
-      if (elapsed < 2050 && elapsed > 950) {
-        // Increase elapsed time slowly to reduce noise
-        this->m_uElapsedT = (this->m_uElapsedT * 0.8) + (0.2 * elapsed);
-      }
-
-      return m_uElapsedT;
-    }
-
-    inline void setStartTime(uint32_t startT) {
-      m_uStartT = startT;
-    }
-
-    inline void setEndTime(uint32_t endT) {
-      m_uEndT = endT;
-    }
-
-  private:
-    uint32_t m_uStartT;
-    uint32_t m_uEndT;
-    uint32_t m_uElapsedT;
 };
 
 /* P,   I,   D,   min,  max */
@@ -198,13 +166,13 @@ void loop() {
   }
 
   setYaw();
-  int16_t receivedSpeed = constrain(int16_t(1500 - pitch.getElapsed()), -MAX_PITCH, MAX_PITCH);
+  int16_t receivedSpeed = constrain((int16_t)(1500 - pitch.getElapsed()), -MAX_PITCH, MAX_PITCH);
 
   if (fallen) {
     stopTimer();
   } else {
     float vehicleSpeed = anglePID.compute(angle - targetAngle);
-    targetAngle = speedPID.compute(float(receivedSpeed * 1.5f) - vehicleSpeed);
+    targetAngle = speedPID.compute((float)receivedSpeed * 1.5f - vehicleSpeed);
 
     if (vehicleSpeed > 0) {
       PORTD &= ~(1 << LMD);                                       // Normal direction
@@ -302,13 +270,11 @@ void blinkLed(uint8_t blinks, uint8_t pin) {
   }
 }
 
-
-
 void setYaw() {
-  int16_t receivedYaw = constrain(int16_t(1500 - yaw.getElapsed()), -MAX_YAW, MAX_YAW);
+  int16_t receivedYaw = constrain((int16_t)(1500 - yaw.getElapsed()), -MAX_YAW, MAX_YAW);
 
   if (receivedYaw < -25) {
-    leftPulseToSkip = (550 / (-receivedYaw));
+    leftPulseToSkip = (MAX_YAW / (-receivedYaw));
     if (leftPulseToSkip < 2) {
       leftPulseToSkip = 2;
     }
@@ -317,7 +283,7 @@ void setYaw() {
   }
 
   if (receivedYaw > 25) {
-    rightPulseToSkip = (550 / receivedYaw);
+    rightPulseToSkip = (MAX_YAW / receivedYaw);
     if (rightPulseToSkip < 2) {
       rightPulseToSkip = 2;
     }
@@ -339,7 +305,9 @@ void setBraking() {
     SET_RED_LED_OFF;
   }
 }
-
+/*
+  For debugging purposes
+*/
 void adjustPid() {
 #if SPEED_P_ADJ
   if (counter++ % 50 == 0) {
@@ -418,7 +386,6 @@ void startTimer() {
 #define LMP_HIGH (PIND >> LMP) & 1
 
 ISR(TIMER1_COMPA_vect) {
-
   // Drive right motor
   if (rightPulseToSkip == 0 || numInterrupts % rightPulseToSkip != 0) {
     if (RMP_HIGH) {
@@ -440,7 +407,6 @@ ISR(TIMER1_COMPA_vect) {
       PORTD |= (1 << LMP);
     }
   }
-
   numInterrupts++;
 }
 
@@ -448,8 +414,10 @@ ISR(TIMER1_COMPA_vect) {
 #define RX1_IS_HIGH (PIND >> 7) & 1
 // Receiver channel 2, pin D10
 #define RX2_IS_HIGH (PINB >> 2) & 1
-
-ISR (PCINT0_vect) {
+/*
+  Capture the pulsewidth of rx channel
+*/
+ISR(PCINT0_vect) {
   if (RX2_IS_HIGH) {
     pitch.setStartTime(micros());
   } else {
@@ -457,7 +425,7 @@ ISR (PCINT0_vect) {
   }
 }
 
-ISR (PCINT2_vect) {
+ISR(PCINT2_vect) {
   if (RX1_IS_HIGH) {
     yaw.setStartTime(micros());
   } else {
