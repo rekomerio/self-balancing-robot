@@ -369,13 +369,13 @@ void setPulseDuration(float pulseTime) {
 /*
   Sets prescaler to 0 to stop the timer
 */
-void stopTimer() {
+inline void stopTimer() {
   TCCR1B &= ~((1 << CS12) | (1 << CS11) | (1 << CS10));
 }
 /*
   Sets prescaler to 64 to start the timer
 */
-void startTimer() {
+inline void startTimer() {
   TCCR1B |= (1 << CS11) | (1 << CS10);
 }
 /*
