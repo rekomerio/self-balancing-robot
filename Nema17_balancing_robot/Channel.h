@@ -9,16 +9,25 @@ class Channel {
     uint32_t getElapsed() {
       uint32_t elapsed = m_uEndT - m_uStartT;
       // Filter out all the nonsense
-      if (elapsed < 2050 && elapsed > 950) {
+      if (elapsed < 2100 && elapsed > 900) {
         // Increase elapsed time slowly to reduce noise
-        this->m_uElapsedT = (this->m_uElapsedT * 0.8) + (0.2 * elapsed);
+        m_uElapsedT = (m_uElapsedT * 0.8) + (0.2 * elapsed);
       }
 
       return m_uElapsedT;
     }
 
-    inline void setStartTime(uint32_t startT) { m_uStartT = startT; }
-    inline void setEndTime(uint32_t endT) { m_uEndT = endT; }
+    inline int16_t getStickPosition() {
+      return constrain((int16_t)(1500 - getElapsed()), -500, 500);
+    }
+
+    inline void setStartTime(uint32_t startT) {
+      m_uStartT = startT;
+    }
+
+    inline void setEndTime(uint32_t endT) {
+      m_uEndT = endT;
+    }
 
   private:
     uint32_t m_uStartT;

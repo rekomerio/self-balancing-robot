@@ -18,10 +18,6 @@
 #define SPEED_I_ADJ        0
 #define SPEED_D_ADJ        0
 
-/* Controller stick range */
-#define MAX_YAW            500
-#define MAX_PITCH          500
-
 /* GYRO */
 #define MPU                0x68
 #define REFRESH_RATE       250.0
@@ -166,7 +162,7 @@ void loop() {
   }
 
   setYaw();
-  int16_t receivedSpeed = constrain((int16_t)(1500 - pitch.getElapsed()), -MAX_PITCH, MAX_PITCH);
+  int16_t receivedSpeed = pitch.getStickPosition();
 
   if (fallen) {
     stopTimer();
@@ -182,7 +178,7 @@ void loop() {
       PORTD &= ~(1 << RMD);
     }
 
-    if (vehicleSpeed > MIN_SPEED || vehicleSpeed < -MIN_SPEED) {
+    if (abs(vehicleSpeed) > MIN_SPEED) {
       setPulseDuration(pulseTime(vehicleSpeed));                 // Set motor speed
       SET_GREEN_LED_OFF;
     } else {
@@ -271,22 +267,16 @@ void blinkLed(uint8_t blinks, uint8_t pin) {
 }
 
 void setYaw() {
-  int16_t receivedYaw = constrain((int16_t)(1500 - yaw.getElapsed()), -MAX_YAW, MAX_YAW);
+  int16_t receivedYaw = yaw.getStickPosition();
 
   if (receivedYaw < -25) {
-    leftPulseToSkip = (MAX_YAW / (-receivedYaw));
-    if (leftPulseToSkip < 2) {
-      leftPulseToSkip = 2;
-    }
+    leftPulseToSkip = (1000 / (-receivedYaw));
   } else {
     leftPulseToSkip = 0;
   }
 
   if (receivedYaw > 25) {
-    rightPulseToSkip = (MAX_YAW / receivedYaw);
-    if (rightPulseToSkip < 2) {
-      rightPulseToSkip = 2;
-    }
+    rightPulseToSkip = (1000 / receivedYaw);
   } else {
     rightPulseToSkip = 0;
   }
