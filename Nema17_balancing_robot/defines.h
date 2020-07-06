@@ -8,6 +8,10 @@
 #define SPEED_I_ADJ 0
 #define SPEED_D_ADJ 0
 
+#define POSITION_P_ADJ 0
+#define POSITION_I_ADJ 0
+#define POSITION_D_ADJ 0
+
 /* GYRO */
 #define MPU_ADDR 0x68
 #define REFRESH_RATE 250.0f
@@ -25,7 +29,7 @@
 #define CG 0
 #define MAX_SPEED 1000.0f
 #define MIN_SPEED 1
-#define MAX_ANGLE 30
+#define MAX_ANGLE 40
 #define START_ANGLE 1
 /*
   Pins dedicated for the motors

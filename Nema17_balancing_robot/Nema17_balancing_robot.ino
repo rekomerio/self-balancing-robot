@@ -16,8 +16,9 @@ struct axis
 };
 
 /* P,   I,   D,   min,  max */
-PID anglePID(19.0, 0.5, 30.0, -MAX_SPEED, MAX_SPEED);      // Controls the motors to achieve desired angle
-PID speedPID(0.0165, 0.0, 0.00425, -MAX_ANGLE, MAX_ANGLE); // Adjusts the angle, so that speed is minimal
+PID anglePID(19.0, 0.5, 30.0, -MAX_SPEED, MAX_SPEED);                         // Controls the motors to achieve desired angle
+PID speedPID(0.0165f, 0.0f, 0.00425f, -MAX_ANGLE + 10.0f, MAX_ANGLE - 10.0f); // Adjusts the angle, so that speed is minimal
+PID positionPID(0.3f, 0.0f, 9.0f, -400, 400);
 
 struct axis<int16_t> gyro;
 struct axis<int16_t> acc;
@@ -30,15 +31,21 @@ Channel pitch;
 Channel yaw;
 
 float angle;
-float targetAngle = 0;
+float targetAngle = 0.0f;
 
 bool isFallen = true;
+bool shouldHoldPosition = true;
+bool hasTargetChanged = false;
+bool hasVehicleStopped = false;
 
 /* Used for controlling the yaw */
 uint16_t numInterrupts = 0;
 uint16_t rightPulseToSkip = 0;
 uint16_t leftPulseToSkip = 0;
 
+int32_t actualPosition = 0;
+int32_t targetPosition = 0;
+uint32_t stickLastUsedAt = 0;
 void setup()
 {
     TCCR1A = 0;
@@ -105,9 +112,11 @@ void loop()
     if (abs(angle) > MAX_ANGLE)
     {
         isFallen = true;
-        targetAngle = 0;
+        targetAngle = 0.0f;
         anglePID.reset();
         speedPID.reset();
+        actualPosition = 0;
+        targetPosition = 0;
     }
 
     if (abs(angle) < START_ANGLE)
@@ -117,6 +126,12 @@ void loop()
 
     setYaw();
     int16_t receivedSpeed = pitch.getStickPosition();
+    if (abs(receivedSpeed) > 25)
+    {
+        stickLastUsedAt = millis();
+        hasTargetChanged = true;
+        hasVehicleStopped = false;
+    }
 
     if (isFallen)
     {
@@ -125,6 +140,19 @@ void loop()
     else
     {
         float vehicleSpeed = anglePID.compute(angle - targetAngle);
+
+        if (shouldHoldPosition && hasVehicleStopped)
+        {
+            if (hasTargetChanged)
+            {
+                stopTimer();
+                targetPosition = actualPosition;
+                startTimer();
+                hasTargetChanged = false;
+            }
+            receivedSpeed += positionPID.compute(actualPosition - targetPosition);
+        }
+
         targetAngle = speedPID.compute((float)receivedSpeed * 1.5f - vehicleSpeed);
 
         if (vehicleSpeed > 0)
@@ -147,6 +175,8 @@ void loop()
         {
             stopTimer(); // Stop the motors
             SET_GREEN_LED_ON;
+            if ((uint32_t)(millis() - stickLastUsedAt) > 100)
+                hasVehicleStopped = true;
         }
     }
 #if DEBUG
@@ -162,7 +192,7 @@ void computeAngle()
     /*
     We wait here a while if necessary, because gyro angle is measured in degrees traveled per second,
     so we need to know exactly how long one loop takes to be able to calculate the current angle.
-    */
+  */
     constexpr uint16_t loopTime = 1000000 / REFRESH_RATE;
     while ((uint32_t)(micros() - previousTime) < loopTime)
     {
@@ -268,14 +298,16 @@ void setBraking()
 {
     if (LEFT_BTN_IS_PRESSED)
     { // Slow braking
-        anglePID.setPID(19.0, 0.5, 30.0);
-        speedPID.setPID(0.0165, 0.0, 0.00425);
+        //anglePID.setPID(19.0, 0.5, 30.0);
+        //speedPID.setPID(0.0165, 0.0, 0.00425);
+        shouldHoldPosition = false;
         SET_RED_LED_ON;
     }
     else if (RIGHT_BTN_IS_PRESSED)
     { // Fast braking
-        anglePID.setPID(15.0, 0.5, 25.0);
-        speedPID.setPID(0.0265, 0.0, 0.0095);
+        //anglePID.setPID(15.0, 0.5, 25.0);
+        //speedPID.setPID(0.0265, 0.0, 0.0095);
+        shouldHoldPosition = true;
         SET_RED_LED_ON;
     }
     else
@@ -352,6 +384,37 @@ void adjustPid()
         Serial.println(anglePID.getD());
     }
 #endif
+#if POSITION_P_ADJ
+    if (counter++ % 50 == 0)
+    {
+        if (LEFT_BTN_IS_PRESSED)
+            positionPID.setP(positionPID.getP() - 0.05);
+        if (RIGHT_BTN_IS_PRESSED)
+            positionPID.setP(positionPID.getP() + 0.05);
+        Serial.println(positionPID.getP(), 10);
+    }
+#endif
+#if POSITION_I_ADJ
+    if (counter++ % 50 == 0)
+    {
+        if (LEFT_BTN_IS_PRESSED)
+            positionPID.setI(positionPID.getI() - 0.00001);
+        if (RIGHT_BTN_IS_PRESSED)
+            positionPID.setI(positionPID.getI() + 0.00001);
+        Serial.println(positionPID.getI(), 10);
+    }
+#endif
+
+#if POSITION_D_ADJ
+    if (counter++ % 50 == 0)
+    {
+        if (LEFT_BTN_IS_PRESSED)
+            positionPID.setD(positionPID.getD() - 0.5);
+        if (RIGHT_BTN_IS_PRESSED)
+            positionPID.setD(positionPID.getD() + 0.5);
+        Serial.println(positionPID.getD(), 10);
+    }
+#endif
 }
 /*
   Set duration for the pulse generated for stepper motors
@@ -385,6 +448,7 @@ inline void startTimer()
 */
 #define RMP_HIGH (PIND >> RMP) & 1
 #define LMP_HIGH (PIND >> LMP) & 1
+#define RMD_HIGH (PIND >> RMD) & 1
 
 ISR(TIMER1_COMPA_vect)
 {
@@ -418,6 +482,9 @@ ISR(TIMER1_COMPA_vect)
         }
     }
     numInterrupts++;
+
+    if (numInterrupts % 2 == 0)
+        actualPosition += (RMD_HIGH) ? -1 : 1;
 }
 
 // Receiver channel 4, pin D7

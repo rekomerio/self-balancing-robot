@@ -10,8 +10,8 @@ class Channel {
       uint32_t elapsed = m_uEndT - m_uStartT;
       // Filter out all the nonsense
       if (elapsed < 2100 && elapsed > 900) {
-        // Increase elapsed time slowly to reduce noise
-        m_uElapsedT = (m_uElapsedT * 0.8) + (0.2 * elapsed);
+        // Increase elapsed time slowly to reduce noise and make behaviour less aggressive
+        m_uElapsedT = (m_uElapsedT * 0.9f) + (0.1f * elapsed);
       }
 
       return m_uElapsedT;
