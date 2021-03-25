@@ -54,5 +54,3 @@
 
 #define LEFT_BTN_IS_PRESSED !((PINB >> 3) & 1)
 #define RIGHT_BTN_IS_PRESSED !((PINB >> 4) & 1)
-
-#define pulseTime(S) (abs(MAX_SPEED / S))
